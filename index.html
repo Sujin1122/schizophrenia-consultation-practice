@@ -209,17 +209,6 @@
 
 <div class="layout">
   <div class="sidebar">
-    <h2>API 설정</h2>
-    <div class="field">
-      <label for="apiKey">Anthropic API Key</label>
-      <input type="password" id="apiKey" placeholder="sk-ant-...">
-      <div class="hint">브라우저 localStorage에만 저장되며 서버로 전송되지 않습니다.</div>
-    </div>
-    <div class="field">
-      <label for="modelId">모델 ID</label>
-      <input type="text" id="modelId" value="claude-sonnet-5">
-    </div>
-
     <h2>환자 페르소나</h2>
     <div class="field">
       <label for="presetSelect">프리셋 선택</label>
@@ -315,8 +304,6 @@ const PRESETS = {
 };
 
 const els = {
-  apiKey: document.getElementById('apiKey'),
-  modelId: document.getElementById('modelId'),
   presetSelect: document.getElementById('presetSelect'),
   personaPrompt: document.getElementById('personaPrompt'),
   applyPersonaBtn: document.getElementById('applyPersonaBtn'),
@@ -329,15 +316,6 @@ const els = {
 let conversation = []; // {role: 'user'|'assistant', content: string}
 let activeSystemPrompt = '';
 let isSending = false;
-
-function loadSettings() {
-  const savedKey = localStorage.getItem('cp_api_key');
-  if (savedKey) els.apiKey.value = savedKey;
-  const savedModel = localStorage.getItem('cp_model_id');
-  if (savedModel) els.modelId.value = savedModel;
-}
-els.apiKey.addEventListener('change', () => localStorage.setItem('cp_api_key', els.apiKey.value));
-els.modelId.addEventListener('change', () => localStorage.setItem('cp_model_id', els.modelId.value));
 
 function populatePresets() {
   for (const [key, val] of Object.entries(PRESETS)) {
@@ -388,11 +366,6 @@ els.resetBtn.addEventListener('click', () => {
 async function sendMessage() {
   const text = els.userInput.value.trim();
   if (!text || isSending) return;
-  const apiKey = els.apiKey.value.trim();
-  if (!apiKey) {
-    alert('먼저 좌측에 Anthropic API Key를 입력해주세요.');
-    return;
-  }
   if (!activeSystemPrompt) {
     activeSystemPrompt = els.personaPrompt.value.trim();
   }
@@ -410,17 +383,12 @@ async function sendMessage() {
   els.messages.scrollTop = els.messages.scrollHeight;
 
   try {
-    const res = await fetch('https://api.anthropic.com/v1/messages', {
+    const res = await fetch('/api/chat', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'x-api-key': apiKey,
-        'anthropic-version': '2023-06-01',
-        'anthropic-dangerous-direct-browser-access': 'true',
       },
       body: JSON.stringify({
-        model: els.modelId.value.trim() || 'claude-sonnet-5',
-        max_tokens: 500,
         system: activeSystemPrompt,
         messages: conversation,
       }),
@@ -459,7 +427,6 @@ els.userInput.addEventListener('keydown', (e) => {
   }
 });
 
-loadSettings();
 populatePresets();
 startNewConversation();
 </script>
