@@ -154,6 +154,20 @@
     max-width: 90%;
     text-align: center;
   }
+  .msg.feedback {
+    align-self: center;
+    background: #f2f6fc;
+    border: 1px solid #c9d8ee;
+    color: var(--text);
+    font-size: 13px;
+    max-width: 85%;
+    white-space: pre-wrap;
+  }
+  .msg.feedback .speaker {
+    color: var(--primary);
+    font-weight: 600;
+    opacity: 1;
+  }
   .msg .speaker {
     display: block;
     font-size: 11px;
@@ -559,6 +573,15 @@ function addMessage(role, text) {
   if (role === 'system-note') {
     div.className = 'msg system-note';
     div.textContent = text;
+  } else if (role === 'feedback') {
+    div.className = 'msg feedback';
+    const speaker = document.createElement('span');
+    speaker.className = 'speaker';
+    speaker.textContent = '📋 상담 피드백 (자동 분석)';
+    div.appendChild(speaker);
+    const body = document.createElement('span');
+    body.textContent = text;
+    div.appendChild(body);
   } else {
     div.className = 'msg ' + (role === 'user' ? 'counselor' : 'patient');
     const speaker = document.createElement('span');
@@ -572,6 +595,62 @@ function addMessage(role, text) {
   els.messages.appendChild(div);
   els.messages.scrollTop = els.messages.scrollHeight;
   return div;
+}
+
+const QUESTION_OPEN_STEMS = /어떻게|어떤|왜\s|무엇|뭐가|뭐예요|언제|어디|누구|얼마나/;
+
+function classifyCounselorQuestion(text) {
+  if (!text.includes('?')) return null;
+  if (QUESTION_OPEN_STEMS.test(text)) return 'open';
+  return 'closed';
+}
+
+function generateFeedback() {
+  const counselorTurns = conversation.filter((m) => m.role === 'user').map((m) => m.content);
+  if (counselorTurns.length === 0) {
+    return '아직 분석할 대화가 없어요. 먼저 상담자로서 몇 마디 건네 본 뒤 "피드백"이라고 입력해주세요.';
+  }
+
+  const tally = { greeting: 0, empathy: 0, confront: 0, smalltalk: 0, feeling: 0, default: 0 };
+  let openQ = 0;
+  let closedQ = 0;
+  for (const line of counselorTurns) {
+    tally[classifyOfflineInput(line)]++;
+    const q = classifyCounselorQuestion(line);
+    if (q === 'open') openQ++;
+    else if (q === 'closed') closedQ++;
+  }
+
+  const lines = [];
+  lines.push(`총 발화 수: ${counselorTurns.length}회`);
+  lines.push(`공감적 반응(이해·수용 표현): ${tally.empathy}회`);
+  lines.push(`직면·반박성 표현: ${tally.confront}회`);
+  lines.push(`개방형 질문: ${openQ}회 / 폐쇄형(단답형) 질문: ${closedQ}회`);
+  lines.push('');
+
+  const comments = [];
+  if (tally.empathy === 0) {
+    comments.push('공감 표현("그러셨군요", "힘드셨겠어요" 등)이 거의 없었어요. 환자가 마음을 열도록 공감적 반응을 더 활용해보세요.');
+  } else {
+    comments.push('공감적 반응을 활용한 점이 좋았어요. 치료적 관계 형성에 도움이 됩니다.');
+  }
+  if (tally.confront > 0) {
+    comments.push(`망상/환청 내용을 직접 부정하거나 반박하는 듯한 표현이 ${tally.confront}회 있었어요. 증상을 직접 논박하기보다는 감정에 초점을 맞추는 것이 치료적으로 더 권장됩니다.`);
+  }
+  if (openQ === 0 && closedQ > 0) {
+    comments.push('질문이 대부분 폐쇄형(예/아니오)이었어요. "어떠셨어요?", "그때 어떤 생각이 드셨어요?" 같은 개방형 질문을 섞어보면 환자가 더 많이 표현하도록 도울 수 있어요.');
+  } else if (openQ > 0) {
+    comments.push('개방형 질문을 사용해 환자의 이야기를 이끌어낸 점이 좋았어요.');
+  }
+  if (counselorTurns.length < 4) {
+    comments.push('아직 대화가 짧아서 경향을 판단하기엔 이른 편이에요. 조금 더 대화를 이어가 보세요.');
+  }
+
+  lines.push('총평: ' + comments.join(' '));
+  lines.push('');
+  lines.push('※ 이 피드백은 키워드 기반 자동 분석이며, 실제 임상 슈퍼비전을 대체하지 않습니다.');
+
+  return lines.join('\n');
 }
 
 function startNewConversation() {
@@ -590,6 +669,14 @@ els.resetBtn.addEventListener('click', () => {
 async function sendMessage() {
   const text = els.userInput.value.trim();
   if (!text || isSending) return;
+
+  if (/^(피드백|feedback|평가\s*해\s*줘|평가\s*해\s*주세요)[!.\s]*$/i.test(text)) {
+    addMessage('user', text);
+    els.userInput.value = '';
+    addMessage('feedback', generateFeedback());
+    return;
+  }
+
   if (!activeSystemPrompt) {
     activeSystemPrompt = els.personaPrompt.value.trim();
   }
